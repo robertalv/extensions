@@ -177,7 +177,7 @@ export default function ViewLogsCommand() {
               <ActionPanel>
                 <ActionPanel.Section>
                   <Action.CopyToClipboard
-                    title="Copy Request ID"
+                    title="Copy Request Id"
                     content={log.requestId}
                     shortcut={{ modifiers: ["cmd"], key: "c" }}
                   />

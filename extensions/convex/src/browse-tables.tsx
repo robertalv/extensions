@@ -8,7 +8,6 @@
 import {
   Action,
   ActionPanel,
-  Color,
   Icon,
   List,
   showToast,
@@ -265,12 +264,7 @@ export default function BrowseTablesCommand() {
                         },
                       ]
                 }
-                detail={
-                  <DocumentDetailPanel
-                    document={doc}
-                    tableName={selectedTable?.name ?? ""}
-                  />
-                }
+                detail={<DocumentDetailPanel document={doc} />}
                 actions={
                   <ActionPanel>
                     <Action
@@ -284,7 +278,7 @@ export default function BrowseTablesCommand() {
                       shortcut={{ modifiers: ["cmd"], key: "c" }}
                     />
                     <Action.CopyToClipboard
-                      title="Copy Document ID"
+                      title="Copy Document Id"
                       content={doc._id}
                       shortcut={{ modifiers: ["cmd", "shift"], key: "c" }}
                     />
@@ -369,13 +363,9 @@ export default function BrowseTablesCommand() {
 // Document detail panel component
 interface DocumentDetailPanelProps {
   document: Document;
-  tableName: string;
 }
 
-function DocumentDetailPanel({
-  document,
-  tableName,
-}: DocumentDetailPanelProps) {
+function DocumentDetailPanel({ document }: DocumentDetailPanelProps) {
   // Get all fields except system fields for the main display
   const userFields = Object.entries(document).filter(
     ([key]) => !key.startsWith("_"),

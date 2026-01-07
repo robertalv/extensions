@@ -2,7 +2,7 @@
  * DeploymentSelector - Quick deployment selection dropdown
  */
 
-import { Action, ActionPanel, Icon, List } from "@raycast/api";
+import { Icon, List } from "@raycast/api";
 import {
   useTeams,
   useProjects,
@@ -59,15 +59,12 @@ export function DeploymentSelector({
         // Find the deployment and its parent project/team
         if (!teams || !value) return;
 
-        for (const team of teams) {
-          // We'd need to fetch all projects/deployments to find it
-          // For now, assume the deployment is in the current selection
-          if (deployments) {
-            const deployment = deployments.find((d) => d.name === value);
-            if (deployment && selectedProject && selectedTeam) {
-              onSelect(deployment, selectedProject, selectedTeam);
-              return;
-            }
+        // We'd need to fetch all projects/deployments to find it
+        // For now, assume the deployment is in the current selection
+        if (deployments) {
+          const deployment = deployments.find((d) => d.name === value);
+          if (deployment && selectedProject && selectedTeam) {
+            onSelect(deployment, selectedProject, selectedTeam);
           }
         }
       }}

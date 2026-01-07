@@ -12,8 +12,7 @@ interface AuthGuardProps {
 }
 
 export function AuthGuard({ children }: AuthGuardProps) {
-  const { session, isLoading, isAuthenticated, login, logout } =
-    useConvexAuth();
+  const { isLoading, isAuthenticated, login } = useConvexAuth();
 
   if (isLoading) {
     return <Detail isLoading={true} markdown="Loading..." />;

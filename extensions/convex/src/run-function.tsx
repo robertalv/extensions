@@ -164,11 +164,6 @@ export default function RunFunctionCommand() {
     );
   };
 
-  const contextSubtitle =
-    selectedProject && selectedDeployment
-      ? `${selectedProject.name} / ${selectedDeployment.deploymentType}`
-      : deploymentName;
-
   return (
     <List
       isLoading={functionsLoading}
@@ -415,7 +410,7 @@ function FunctionRunner({
               onAction={handleRunWithArgs}
             />
             <Action
-              title="Quick Run (No Args)"
+              title="Quick Run Without Arguments"
               icon={Icon.Bolt}
               onAction={handleQuickRun}
               shortcut={{ modifiers: ["cmd"], key: "r" }}
@@ -488,14 +483,6 @@ function ArgumentsForm({
     } catch {
       setParseError("Invalid JSON format");
     }
-  };
-
-  // Try to provide a template based on expected args
-  const getArgsTemplate = () => {
-    if (!functionSpec.args) return "{}";
-    // Try to create a template from the args validator string
-    // This is a simple heuristic - in reality args is a validator string
-    return "{}";
   };
 
   return (
