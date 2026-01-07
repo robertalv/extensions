@@ -182,6 +182,54 @@ export default function SwitchProjectCommand() {
             subtitle={currentSelection}
             icon={Icon.CheckCircle}
             accessories={[{ text: "Active" }]}
+            actions={
+              <ActionPanel>
+                <ActionPanel.Section>
+                  <Action
+                    title="Sign Out"
+                    icon={Icon.Logout}
+                    style={Action.Style.Destructive}
+                    onAction={async () => {
+                      await logout();
+                      await showToast({
+                        style: Toast.Style.Success,
+                        title: "Signed out",
+                      });
+                    }}
+                    shortcut={{ modifiers: ["cmd", "shift"], key: "o" }}
+                  />
+                </ActionPanel.Section>
+              </ActionPanel>
+            }
+          />
+        </List.Section>
+      )}
+
+      {/* Account section - always visible in teams view */}
+      {viewState === "teams" && (
+        <List.Section title="Account">
+          <List.Item
+            title={profile?.email ?? "Signed in"}
+            subtitle={profile?.name}
+            icon={Icon.Person}
+            accessories={[{ text: "Sign Out", icon: Icon.Logout }]}
+            actions={
+              <ActionPanel>
+                <Action
+                  title="Sign Out"
+                  icon={Icon.Logout}
+                  style={Action.Style.Destructive}
+                  onAction={async () => {
+                    await logout();
+                    await showToast({
+                      style: Toast.Style.Success,
+                      title: "Signed out",
+                    });
+                  }}
+                  shortcut={{ modifiers: ["cmd", "shift"], key: "o" }}
+                />
+              </ActionPanel>
+            }
           />
         </List.Section>
       )}

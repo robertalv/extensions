@@ -4,7 +4,8 @@
   "title": "Convex Tools",
   "description": "Interact with your Convex projects directly from Raycast",
   "icon": "command-icon.png",
-  "author": "convex-panel",
+  "author": "devwithbobby",
+  "authorUrl": "https://devwithbobby.com",
   "categories": [
     "Developer Tools",
     "Productivity"
