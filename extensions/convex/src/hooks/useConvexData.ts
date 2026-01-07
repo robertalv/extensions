@@ -41,9 +41,9 @@ export function useProjects(accessToken: string | null, teamId: number | null) {
     async (token: string, tId: number) => {
       return getProjects(token, tId);
     },
-    [accessToken ?? "", teamId ?? 0],
+    [accessToken ?? "", teamId ?? -1],
     {
-      execute: !!accessToken && !!teamId,
+      execute: !!accessToken && teamId !== null && teamId > 0,
       keepPreviousData: true,
     },
   );
@@ -57,9 +57,9 @@ export function useDeployments(
     async (token: string, pId: number) => {
       return getDeployments(token, pId);
     },
-    [accessToken ?? "", projectId ?? 0],
+    [accessToken ?? "", projectId ?? -1],
     {
-      execute: !!accessToken && !!projectId,
+      execute: !!accessToken && projectId !== null && projectId > 0,
       keepPreviousData: true,
     },
   );

@@ -1,6 +1,6 @@
 # Convex Tools Changelog
 
-## [Initial Version] - 2025-01-07
+## [Initial Version] - {PR_MERGE_DATE}
 
 ### Added
 

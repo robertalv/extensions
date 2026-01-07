@@ -125,7 +125,11 @@ export default function SwitchProjectCommand() {
   const handleSelectProject = (project: Project) => {
     setSelectedProject(project);
     setViewState("deployments");
-    setSelectedContext({ projectId: project.id, deploymentName: null });
+    setSelectedContext({
+      teamId: selectedTeam?.id ?? selectedContext.teamId,
+      projectId: project.id,
+      deploymentName: null,
+    });
   };
 
   // Handle deployment selection

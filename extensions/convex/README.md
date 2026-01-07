@@ -1,6 +1,6 @@
 # Convex Tools for Raycast
 
-Interact with your [Convex](https://convex.dev) projects directly from Raycast. Browse tables, run functions, and switch between projects without leaving your keyboard.
+Interact with your [Convex](https://convex.dev) projects directly from Raycast. Switch between projects, run functions, browse tables, and view real-time logs without leaving your keyboard.
 
 ## Features
 
@@ -12,7 +12,7 @@ Quickly switch between your Convex teams, projects, and deployments. Your select
 
 Search and execute your Convex queries, mutations, and actions:
 
-- Fuzzy search across all public functions
+- Fuzzy search across all functions
 - JSON argument input with validation
 - View execution results with timing
 - Copy results to clipboard
@@ -25,6 +25,15 @@ Explore your database tables and documents:
 - Paginated document browsing
 - View full document details
 - Copy document IDs and JSON
+
+### View Convex Logs
+
+Stream real-time function execution logs:
+
+- Live log streaming from your deployment
+- Filter by function name
+- View execution time, status, and errors
+- Pause/resume streaming
 
 ## Installation
 
