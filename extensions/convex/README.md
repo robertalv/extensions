@@ -31,9 +31,32 @@ Explore your database tables and documents:
 Stream real-time function execution logs:
 
 - Live log streaming from your deployment
-- Filter by function name
+- Filter by function name and search
 - View execution time, status, and errors
+- Function call tree visualization
+- Collapsible console output
+- Request-level filtering
 - Pause/resume streaming
+
+### View Convex Documentation
+
+Quick access to Convex documentation:
+
+- Browse 60+ documentation links
+- Organized by category (Getting Started, Features, API Reference, etc.)
+- Search by title, category, or URL
+- Direct browser access to docs
+- Copy URLs and titles
+
+### View Convex Components
+
+Browse and install Convex components:
+
+- 30+ official and community components
+- Categorized by AI, Backend, Database, Integrations, Payments, etc.
+- View weekly download stats
+- Copy install commands
+- Direct links to documentation and npm
 
 ## Installation
 
