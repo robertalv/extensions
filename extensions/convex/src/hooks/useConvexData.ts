@@ -29,7 +29,8 @@ import { type DeployKeyConfig } from "../lib/deployKeyAuth";
 export function useTeams(accessToken: string | null) {
   return useCachedPromise(
     async (token: string) => {
-      return getTeams(token);
+      const teams = await getTeams(token);
+      return Array.isArray(teams) ? teams : [];
     },
     [accessToken ?? ""],
     {
@@ -42,7 +43,8 @@ export function useTeams(accessToken: string | null) {
 export function useProjects(accessToken: string | null, teamId: number | null) {
   return useCachedPromise(
     async (token: string, tId: number) => {
-      return getProjects(token, tId);
+      const projects = await getProjects(token, tId);
+      return Array.isArray(projects) ? projects : [];
     },
     [accessToken ?? "", teamId ?? -1],
     {
@@ -58,7 +60,8 @@ export function useDeployments(
 ) {
   return useCachedPromise(
     async (token: string, pId: number) => {
-      return getDeployments(token, pId);
+      const deployments = await getDeployments(token, pId);
+      return Array.isArray(deployments) ? deployments : [];
     },
     [accessToken ?? "", projectId ?? -1],
     {
@@ -85,12 +88,14 @@ export function useTables(
   accessToken: string | null,
   deploymentName: string | null,
   deployKeyConfig?: DeployKeyConfig | null,
+  deploymentUrl?: string | null,
 ) {
   return useCachedPromise(
     async (
       token: string,
       deployment: string,
       config: DeployKeyConfig | null,
+      url: string,
     ) => {
       // Use deploy key auth if available
       if (config) {
@@ -100,10 +105,20 @@ export function useTables(
         };
         return getTables(auth);
       }
-      // Otherwise use OAuth token
-      return getTables(deployment, token);
+      // Otherwise use OAuth token; prefer the real deployment URL over
+      // deriving it from the name (region-scoped domains)
+      return getTables({
+        deploymentName: deployment,
+        deploymentUrl: url || undefined,
+        accessToken: token,
+      });
     },
-    [accessToken ?? "", deploymentName ?? "", deployKeyConfig ?? null],
+    [
+      accessToken ?? "",
+      deploymentName ?? "",
+      deployKeyConfig ?? null,
+      deploymentUrl ?? "",
+    ],
     {
       execute: (!!accessToken && !!deploymentName) || !!deployKeyConfig,
       keepPreviousData: true,
@@ -115,12 +130,14 @@ export function useFunctions(
   accessToken: string | null,
   deploymentName: string | null,
   deployKeyConfig?: DeployKeyConfig | null,
+  deploymentUrl?: string | null,
 ) {
   return useCachedPromise(
     async (
       token: string,
       deployment: string,
       config: DeployKeyConfig | null,
+      url: string,
     ) => {
       // Use deploy key auth if available
       if (config) {
@@ -130,10 +147,20 @@ export function useFunctions(
         };
         return getFunctions(auth);
       }
-      // Otherwise use OAuth token
-      return getFunctions(deployment, token);
+      // Otherwise use OAuth token; prefer the real deployment URL over
+      // deriving it from the name (region-scoped domains)
+      return getFunctions({
+        deploymentName: deployment,
+        deploymentUrl: url || undefined,
+        accessToken: token,
+      });
     },
-    [accessToken ?? "", deploymentName ?? "", deployKeyConfig ?? null],
+    [
+      accessToken ?? "",
+      deploymentName ?? "",
+      deployKeyConfig ?? null,
+      deploymentUrl ?? "",
+    ],
     {
       execute: (!!accessToken && !!deploymentName) || !!deployKeyConfig,
       keepPreviousData: true,
@@ -149,6 +176,7 @@ export interface UseLogsOptions {
   limit?: number;
   autoRefresh?: boolean;
   deployKeyConfig?: DeployKeyConfig | null;
+  deploymentUrl?: string | null;
 }
 
 export interface UseLogsResult {
@@ -166,7 +194,12 @@ export function useLogs(
   deploymentName: string | null,
   options: UseLogsOptions = {},
 ): UseLogsResult {
-  const { limit = 50, autoRefresh = true, deployKeyConfig } = options;
+  const {
+    limit = 50,
+    autoRefresh = true,
+    deployKeyConfig,
+    deploymentUrl,
+  } = options;
 
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -211,11 +244,19 @@ export function useLogs(
             limit,
           });
         } else {
-          // OAuth mode
-          response = await getLogs(deploymentName!, accessToken!, {
-            cursor: cursorRef.current,
-            limit,
-          });
+          // OAuth mode; prefer the real deployment URL over deriving it from
+          // the name (region-scoped domains)
+          response = await getLogs(
+            {
+              deploymentName: deploymentName!,
+              deploymentUrl: deploymentUrl || undefined,
+              accessToken: accessToken!,
+            },
+            {
+              cursor: cursorRef.current,
+              limit,
+            },
+          );
         }
 
         // Filter out duplicates and add new logs
@@ -247,7 +288,14 @@ export function useLogs(
         setIsLoading(false);
       }
     },
-    [accessToken, deploymentName, deployKeyConfig, limit, canFetch],
+    [
+      accessToken,
+      deploymentName,
+      deployKeyConfig,
+      deploymentUrl,
+      limit,
+      canFetch,
+    ],
   );
 
   // Initial fetch and polling

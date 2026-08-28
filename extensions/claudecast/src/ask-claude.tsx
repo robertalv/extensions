@@ -9,9 +9,15 @@ import {
   useNavigation,
   getPreferenceValues,
   popToRoot,
+  LocalStorage,
 } from "@raycast/api";
 import { useState, useEffect } from "react";
+import { existsSync, mkdirSync } from "fs";
+import { homedir } from "os";
+import path from "path";
 import {
+  ensureClaudeApiAuth,
+  ensureClaudeInstalled,
   executePrompt,
   isClaudeInstalled,
   ClaudeResponse,
@@ -21,27 +27,27 @@ import {
   formatContextForPrompt,
   CapturedContext,
 } from "./lib/context-capture";
-import { launchClaudeCode } from "./lib/terminal";
+import { launchClaudeCode, expandTilde } from "./lib/terminal";
+import { shortcut } from "./lib/shortcuts";
+import { isWindows } from "./lib/platform";
+
+const PROJECT_PATH_STORAGE_KEY = "askClaudeProjectPath";
 
 const MODEL_OPTIONS = [
+  { title: "Fable (Long-Running Agents)", value: "fable" },
   { title: "Sonnet (Balanced)", value: "sonnet" },
-  { title: "Opus (Most Capable)", value: "opus" },
+  { title: "Opus (Complex Reasoning)", value: "opus" },
   { title: "Haiku (Fastest)", value: "haiku" },
 ];
 
 export default function AskClaude() {
   const [isLoading, setIsLoading] = useState(true);
   const [claudeInstalled, setClaudeInstalled] = useState(true);
-  const [context, setContext] = useState<CapturedContext | null>(null);
 
   useEffect(() => {
     async function init() {
-      const [installed, capturedContext] = await Promise.all([
-        isClaudeInstalled(),
-        captureContext(),
-      ]);
+      const installed = await isClaudeInstalled();
       setClaudeInstalled(installed);
-      setContext(capturedContext);
       setIsLoading(false);
     }
     init();
@@ -50,12 +56,19 @@ export default function AskClaude() {
   if (isLoading) {
     return (
       <Form isLoading={true}>
-        <Form.Description title="Loading" text="Capturing context..." />
+        <Form.Description
+          title="Loading"
+          text="Checking Claude installation..."
+        />
       </Form>
     );
   }
 
   if (!claudeInstalled) {
+    const installCommand = isWindows()
+      ? "winget install Anthropic.ClaudeCode"
+      : "curl -fsSL https://claude.ai/install.sh | bash";
+    const shellLanguage = isWindows() ? "powershell" : "bash";
     return (
       <Detail
         markdown={`# Claude Code Not Found
@@ -66,26 +79,45 @@ Claude Code CLI is not installed or not in your PATH.
 
 Run the following command to install Claude Code:
 
-\`\`\`bash
-npm install -g @anthropic-ai/claude-code
+\`\`\`${shellLanguage}
+${installCommand}
 \`\`\`
 
-Or with Homebrew:
+## Authentication Setup
 
-\`\`\`bash
-brew install claude-code
-\`\`\`
+After installation, you need to authenticate. Choose **one** of these options:
 
-After installation, you may need to configure the path in the extension preferences if it's not automatically detected.`}
+### Option 1: Anthropic API Key (Pay-As-You-Go)
+Best for: Developers who want direct API billing
+
+1. Get your API key from [console.anthropic.com](https://console.anthropic.com)
+2. Open ClaudeCast preferences in Raycast
+3. Paste your API key in the "Anthropic API Key" field
+
+### Option 2: OAuth Token (Claude Subscription)
+Best for: Claude Pro/Team subscribers
+
+1. Run in terminal: \`claude setup-token\`
+2. Follow the prompts to authenticate
+3. Copy the generated token
+4. Open ClaudeCast preferences in Raycast
+5. Paste the token in the "OAuth Token" field
+
+---
+*Note: The API Key method uses Anthropic's pay-per-use pricing. The OAuth Token method uses your existing Claude subscription.*`}
         actions={
           <ActionPanel>
             <Action.OpenInBrowser
-              title="Installation Guide"
-              url="https://docs.anthropic.com/claude-code/installation"
+              title="Get Anthropic Api Key"
+              url="https://console.anthropic.com/settings/keys"
             />
             <Action.CopyToClipboard
               title="Copy Install Command"
-              content="npm install -g @anthropic-ai/claude-code"
+              content={installCommand}
+            />
+            <Action.CopyToClipboard
+              title="Copy Setup Token Command"
+              content="claude setup-token"
             />
           </ActionPanel>
         }
@@ -93,13 +125,83 @@ After installation, you may need to configure the path in the extension preferen
     );
   }
 
-  return <AskClaudeForm context={context} />;
+  return <AskClaudeForm />;
 }
 
-function AskClaudeForm({ context }: { context: CapturedContext | null }) {
+function AskClaudeForm() {
   const { push } = useNavigation();
   const preferences = getPreferenceValues<Preferences>();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoadingPath, setIsLoadingPath] = useState(true);
+  const [isCapturingContext, setIsCapturingContext] = useState(false);
+  const [context, setContext] = useState<CapturedContext | null>(null);
+  const defaultProjectPath = path.join(homedir(), "claudecast");
+  const [projectPath, setProjectPath] = useState(defaultProjectPath);
+
+  // Load saved project path from LocalStorage on mount
+  useEffect(() => {
+    async function loadSavedPath() {
+      try {
+        const savedPath = await LocalStorage.getItem<string>(
+          PROJECT_PATH_STORAGE_KEY,
+        );
+        if (savedPath) {
+          setProjectPath(savedPath);
+        }
+      } catch {
+        // Ignore errors, use default
+      }
+      setIsLoadingPath(false);
+    }
+    loadSavedPath();
+  }, []);
+
+  // Save project path to LocalStorage when it changes
+  async function handlePathChange(newPath: string) {
+    setProjectPath(newPath);
+    try {
+      await LocalStorage.setItem(PROJECT_PATH_STORAGE_KEY, newPath);
+    } catch {
+      // Ignore errors saving path
+    }
+  }
+
+  // Manual context capture. Keeps only the user-controlled signals: selected
+  // text, clipboard, and frontmost app name. The working directory is set
+  // separately via the form's Project Path field.
+  async function handleCaptureContext() {
+    setIsCapturingContext(true);
+    try {
+      const captured = await captureContext();
+      const sanitized = {
+        selectedText: captured.selectedText,
+        clipboard: captured.clipboard,
+        frontmostApp: captured.frontmostApp,
+      };
+      setContext(sanitized);
+      const summary = getContextSummary(sanitized);
+      if (summary) {
+        await showToast({
+          style: Toast.Style.Success,
+          title: "Context captured",
+          message: "Selected text and clipboard added",
+        });
+      } else {
+        await showToast({
+          style: Toast.Style.Success,
+          title: "No context found",
+          message: "No selected text or clipboard content detected",
+        });
+      }
+    } catch {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Failed to capture context",
+      });
+    } finally {
+      setIsCapturingContext(false);
+    }
+  }
 
   const contextSummary = getContextSummary(context);
 
@@ -119,6 +221,33 @@ function AskClaudeForm({ context }: { context: CapturedContext | null }) {
     setIsSubmitting(true);
 
     try {
+      // Determine target path (user input or default), expanding ~ to home dir
+      const targetPath = expandTilde(projectPath) || defaultProjectPath;
+
+      // Create directory if it doesn't exist
+      if (!existsSync(targetPath)) {
+        try {
+          mkdirSync(targetPath, { recursive: true });
+        } catch (error) {
+          await showToast({
+            style: Toast.Style.Failure,
+            title: "Failed to create directory",
+            message: error instanceof Error ? error.message : String(error),
+          });
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
+      if (!(await ensureClaudeInstalled())) {
+        setIsSubmitting(false);
+        return;
+      }
+      if (!(await ensureClaudeApiAuth())) {
+        setIsSubmitting(false);
+        return;
+      }
+
       await showToast({
         style: Toast.Style.Animated,
         title: "Asking Claude Code...",
@@ -132,7 +261,7 @@ function AskClaudeForm({ context }: { context: CapturedContext | null }) {
       const response = await executePrompt(values.prompt, {
         model: values.model,
         context: contextStr,
-        cwd: context?.projectPath,
+        cwd: targetPath,
       });
 
       await showToast({
@@ -140,9 +269,7 @@ function AskClaudeForm({ context }: { context: CapturedContext | null }) {
         title: "Response received",
       });
 
-      push(
-        <ResponseView response={response} projectPath={context?.projectPath} />,
-      );
+      push(<ResponseView response={response} projectPath={targetPath} />);
     } catch (error) {
       await showToast({
         style: Toast.Style.Failure,
@@ -156,7 +283,7 @@ function AskClaudeForm({ context }: { context: CapturedContext | null }) {
 
   return (
     <Form
-      isLoading={isSubmitting}
+      isLoading={isSubmitting || isLoadingPath || isCapturingContext}
       actions={
         <ActionPanel>
           <Action.SubmitForm
@@ -165,12 +292,32 @@ function AskClaudeForm({ context }: { context: CapturedContext | null }) {
             onSubmit={handleSubmit}
           />
           <Action
+            title="Capture Context"
+            icon={Icon.Download}
+            shortcut={shortcut.primary("g")}
+            onAction={handleCaptureContext}
+          />
+          <Action
             title="Open Full Session"
             icon={Icon.Terminal}
-            shortcut={{ modifiers: ["cmd"], key: "o" }}
+            shortcut={shortcut.open}
             onAction={async () => {
-              await launchClaudeCode({ projectPath: context?.projectPath });
-              await popToRoot();
+              try {
+                const targetPath =
+                  expandTilde(projectPath) || defaultProjectPath;
+                if (!existsSync(targetPath)) {
+                  mkdirSync(targetPath, { recursive: true });
+                }
+                await launchClaudeCode({ projectPath: targetPath });
+                await popToRoot();
+              } catch (error) {
+                await showToast({
+                  style: Toast.Style.Failure,
+                  title: "Failed to open session",
+                  message:
+                    error instanceof Error ? error.message : String(error),
+                });
+              }
             }}
           />
         </ActionPanel>
@@ -197,17 +344,31 @@ function AskClaudeForm({ context }: { context: CapturedContext | null }) {
         ))}
       </Form.Dropdown>
 
-      {contextSummary && (
+      <Form.TextField
+        id="projectPath"
+        title="Project Path"
+        value={projectPath}
+        onChange={handlePathChange}
+        placeholder="~/claudecast"
+        info="Working directory for Claude Code. Supports ~ for home directory. Created if it doesn't exist."
+      />
+
+      <Form.Separator />
+
+      {contextSummary ? (
         <>
-          <Form.Separator />
           <Form.Checkbox
             id="includeContext"
             label="Include captured context"
             defaultValue={true}
-            info={contextSummary}
           />
-          <Form.Description title="Context" text={contextSummary} />
+          <Form.Description title="Captured Context" text={contextSummary} />
         </>
+      ) : (
+        <Form.Description
+          title="Context"
+          text="Use Capture Context to add your selected text and recent clipboard entry to the prompt."
+        />
       )}
     </Form>
   );
@@ -253,17 +414,17 @@ function ResponseView({
             <Action.CopyToClipboard
               title="Copy Response"
               content={response.result}
-              shortcut={{ modifiers: ["cmd"], key: "c" }}
+              shortcut={shortcut.copy}
             />
             <Action.Paste
               title="Paste Response"
               content={response.result}
-              shortcut={{ modifiers: ["cmd", "shift"], key: "v" }}
+              shortcut={shortcut.primaryShift("v")}
             />
             <Action.CopyToClipboard
               title="Copy as Markdown"
               content={markdown}
-              shortcut={{ modifiers: ["cmd", "shift"], key: "c" }}
+              shortcut={shortcut.primaryShift("c")}
             />
           </ActionPanel.Section>
 
@@ -271,7 +432,7 @@ function ResponseView({
             <Action
               title="Continue in Terminal"
               icon={Icon.Terminal}
-              shortcut={{ modifiers: ["cmd"], key: "t" }}
+              shortcut={shortcut.primary("t")}
               onAction={async () => {
                 await launchClaudeCode({
                   projectPath,

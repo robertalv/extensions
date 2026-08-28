@@ -15,7 +15,9 @@
     "validate",
     "hrishabhn",
     "bogdan_bucur",
-    "xmok"
+    "xmok",
+    "byheaven",
+    "christianmagill"
   ],
   "license": "MIT",
   "keywords": [
@@ -130,7 +132,7 @@
       "description": "Get info about currently playing track.",
       "disabledByDefault": true,
       "mode": "no-view",
-      "interval": "30s"
+      "interval": "1m"
     },
     {
       "name": "remove-current-playing-from-current-playlist",
@@ -292,7 +294,7 @@
     {
       "name": "currently-playing-menu-bar",
       "title": "Menu Bar Player",
-      "description": "See what's currently playing in your Menu Bar. Click for further actions, such as Play/Pause. Refreshes every 10 seconds.",
+      "description": "See what's currently playing in your Menu Bar. Click for further actions, such as Play/Pause.",
       "disabledByDefault": true,
       "mode": "menu-bar",
       "interval": "10s",
@@ -328,6 +330,43 @@
           "type": "textfield",
           "default": "30",
           "required": false
+        }
+      ]
+    },
+    {
+      "name": "search-apple-music",
+      "title": "Search Apple Music",
+      "subtitle": "Apple Music",
+      "description": "Search the Apple Music catalog for songs and albums, and add them to your library.",
+      "disabledByDefault": true,
+      "mode": "view",
+      "keywords": [
+        "search",
+        "catalog",
+        "album",
+        "song",
+        "library"
+      ]
+    },
+    {
+      "name": "just-play",
+      "title": "Just Play",
+      "subtitle": "Apple Music",
+      "description": "Quickly start playing a song from Apple Music based on your query.",
+      "mode": "no-view",
+      "disabledByDefault": true,
+      "keywords": [
+        "search",
+        "play",
+        "song",
+        "catalog"
+      ],
+      "arguments": [
+        {
+          "name": "query",
+          "placeholder": "Song / Artist",
+          "type": "text",
+          "required": true
         }
       ]
     }
@@ -1337,5 +1376,9 @@
   },
   "platforms": [
     "macOS"
-  ]
+  ],
+  "overrides": {
+    "brace-expansion": "5.0.9",
+    "js-yaml@4": "4.3.1"
+  }
 }

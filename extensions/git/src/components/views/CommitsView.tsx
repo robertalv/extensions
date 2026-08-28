@@ -1,4 +1,4 @@
-import { ActionPanel, List, Icon, Action, Color, Image } from "@raycast/api";
+import { ActionPanel, List, Icon, Action, Color, Image, Keyboard } from "@raycast/api";
 import {
   CommitCheckoutAction,
   CommitCherryPickAction,
@@ -22,8 +22,8 @@ import { RemoteFetchAction, RemotePullAction } from "../actions/RemoteActions";
 import { RepositoryContext, NavigationContext } from "../../open-repository";
 import { WorkspaceNavigationActions, WorkspaceNavigationDropdown } from "../actions/WorkspaceNavigationActions";
 import { ToggleDetailAction, ToggleDetailController, useToggleDetail } from "../actions/ToggleDetailAction";
-import { basename } from "path";
 import { CopyToClipboardMenuAction } from "../actions/CopyToClipboardMenuAction";
+import { GravatarIcon } from "../icons/GravatarIcon";
 
 export function CommitsView(context: RepositoryContext & NavigationContext) {
   const toggleDetailController = useToggleDetail("Commits-Detail", "Detail", false);
@@ -37,11 +37,15 @@ export function CommitsView(context: RepositoryContext & NavigationContext) {
     <List
       isLoading={context.commits.isLoading}
       pagination={context.commits.pagination}
-      navigationTitle={context.gitManager.repoName}
-      searchBarPlaceholder="Search commits by message, sha, author, tags, files..."
+      navigationTitle={context.gitManager.worktreeOrigin?.displayName ?? context.gitManager.repoName}
+      searchBarPlaceholder="Search commits by message, SHA..."
       selectedItemId={selectedCommitId || undefined}
       isShowingDetail={toggleDetailController.isShowingDetail}
       searchBarAccessory={WorkspaceNavigationDropdown(context)}
+      filtering={false}
+      throttle
+      searchText={context.commits.searchText}
+      onSearchTextChange={context.commits.setSearchText}
     >
       {context.commits.error ? (
         <List.EmptyView
@@ -58,11 +62,32 @@ export function CommitsView(context: RepositoryContext & NavigationContext) {
             </ActionPanel>
           }
         />
+      ) : context.commits.isLoading &&
+        context.commits.data.length === 0 &&
+        context.commits.searchText.trim().length > 0 ? (
+        <List.EmptyView
+          title="Searching commits"
+          description="Search is still in progress..."
+          icon={Icon.MagnifyingGlass}
+          actions={
+            <ActionPanel>
+              <SharedActionsSection
+                toggleDetailController={toggleDetailController}
+                toggleMetadataController={toggleMetadataController}
+                {...context}
+              />
+            </ActionPanel>
+          }
+        />
       ) : !context.commits.isLoading && context.commits.data.length === 0 ? (
         <List.EmptyView
-          title="No commits"
-          description="No commits in this branch."
-          icon={`git-commit.svg`}
+          title={context.commits.searchText.trim() ? "No matching commits" : "No commits"}
+          description={
+            context.commits.searchText.trim()
+              ? `No commits match "${context.commits.searchText.trim()}".`
+              : "No commits in this branch."
+          }
+          icon={context.commits.searchText.trim() ? Icon.MagnifyingGlass : `git-commit.svg`}
           actions={
             <ActionPanel>
               <SharedActionsSection
@@ -106,18 +131,25 @@ function CommitListItem(
       onMoveToCommit: (commitHash: string) => void;
     },
 ) {
-  const icon: Image.ImageLike | undefined = useMemo(() => {
+  const icon: List.Item.Props["icon"] | undefined = useMemo(() => {
     if (
       context.commits.selectedBranch &&
       context.commits.selectedBranch.kind === "branch" &&
       context.commits.selectedBranch.ahead
     ) {
       if (context.commits.selectedBranch.ahead > context.index) {
-        return { source: Icon.Dot, tintColor: Color.Orange, tooltip: "Unpushed" };
+        return {
+          value: { source: Icon.Dot, tintColor: Color.Orange },
+          tooltip: "Unpushed",
+        };
       }
     }
-    return undefined;
-  }, [context.commits.selectedBranch, context.index]);
+
+    return {
+      value: GravatarIcon(context.commit),
+      tooltip: context.commit.author,
+    };
+  }, [context.commits.selectedBranch, context.index, context.commit.authorEmail]);
 
   // Prepare accessories based on filter and detail view state
   const accessories: List.Item.Accessory[] = useMemo(() => {
@@ -216,25 +248,28 @@ function CommitListItem(
       title={context.commit.message}
       icon={icon}
       accessories={accessories}
-      keywords={[
-        context.commit.hash,
-        context.commit.shortHash,
-        context.commit.body,
-        ...context.commit.author.split(" "),
-        context.commit.authorEmail,
-        ...context.commit.tags,
-        ...(context.commit.changedFiles?.map((fileChanges) => basename(fileChanges.path)) || []),
-      ].filter((keyword): keyword is string => Boolean(keyword))}
       detail={
         <List.Item.Detail
           markdown={commitBodyMarkdown}
           metadata={
             context.toggleMetadataController.isShowingDetail ? (
               <List.Item.Detail.Metadata>
-                <List.Item.Detail.Metadata.Label title="Author" text={context.commit.author} />
-                <List.Item.Detail.Metadata.Label title="Email" text={context.commit.authorEmail} />
-                <List.Item.Detail.Metadata.Label title="Date" text={context.commit.date.toLocaleString()} />
-                <List.Item.Detail.Metadata.Label title="Hash" text={context.commit.hash} />
+                <List.Item.Detail.Metadata.Label
+                  title="Author"
+                  text={context.commit.author}
+                  icon={GravatarIcon(context.commit)}
+                />
+                <List.Item.Detail.Metadata.Link
+                  title="Email"
+                  text={context.commit.authorEmail}
+                  target={`mailto:${context.commit.authorEmail}`}
+                />
+                <List.Item.Detail.Metadata.Label
+                  title="Date"
+                  text={context.commit.date.toLocaleString()}
+                  icon={Icon.Calendar}
+                />
+                <List.Item.Detail.Metadata.Label title="SHA" text={context.commit.hash} icon={Icon.Hashtag} />
                 {/* Tags as TagList */}
                 {context.commit.tags.length > 0 && (
                   <List.Item.Detail.Metadata.TagList title="Tags">
@@ -406,7 +441,7 @@ function SharedActionsSection(
             context.commits.revalidate();
           }}
           icon={Icon.ArrowClockwise}
-          shortcut={{ modifiers: ["cmd"], key: "r" }}
+          shortcut={Keyboard.Shortcut.Common.Refresh}
         />
       </ActionPanel.Section>
 
@@ -435,7 +470,6 @@ function CommitBranchFilterAction(context: RepositoryContext) {
       <ActionPanel.Section title={context.branches.data.detachedHead ? "Detached HEAD" : "Current Branch"}>
         {context.branches.data.detachedHead && (
           <Action
-            // eslint-disable-next-line @raycast/prefer-title-case
             title={`HEAD (${context.branches.data.detachedHead.shortCommitHash})`}
             icon={context.commits.filter.kind === "current" ? Icon.Checkmark : Icon.Anchor}
             autoFocus={context.commits.filter.kind === "current"}
@@ -466,7 +500,7 @@ function CommitBranchFilterAction(context: RepositoryContext) {
               context.commits.filter.kind === "current" && context.commits.filter.upstream
                 ? { source: Icon.Checkmark }
                 : RemoteHostProviderIcon(
-                    context.remotes.data[context.branches.data.currentBranch.upstream.remote].provider,
+                    context.remotes.data[context.branches.data.currentBranch.upstream.remote]?.provider,
                   )
             }
             autoFocus={context.commits.filter.kind === "current" && context.commits.filter.upstream}
@@ -506,7 +540,7 @@ function BranchFilterAction(context: RepositoryContext & { branch: Branch }) {
     let baseIcon: Image.ImageLike = Icon.Dot;
     switch (context.branch.type) {
       case "remote":
-        baseIcon = RemoteHostProviderIcon(context.remotes.data[context.branch.remote!].provider);
+        baseIcon = RemoteHostProviderIcon(context.remotes.data[context.branch.remote!]?.provider);
         break;
       case "local":
         baseIcon = Icon.Dot;

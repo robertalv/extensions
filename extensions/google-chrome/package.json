@@ -22,7 +22,10 @@
     "pernielsentikaer",
     "j3lte",
     "0xdhrv",
-    "xmok"
+    "xmok",
+    "hayk_safaryan",
+    "alexi.build",
+    "oussama_moussaoui"
   ],
   "pastContributors": [
     "jonasengelmann"
@@ -91,6 +94,20 @@
       "subtitle": "Google Chrome",
       "description": "Open the current active tab's URL in a new Chrome Guest window.",
       "mode": "no-view"
+    },
+    {
+      "name": "name-window",
+      "title": "Name Window",
+      "subtitle": "Google Chrome",
+      "description": "Name the currently active Google Chrome window.",
+      "mode": "no-view"
+    },
+    {
+      "name": "search-windows",
+      "title": "Search Windows",
+      "subtitle": "Google Chrome",
+      "description": "List all open windows and focus the selected one.",
+      "mode": "view"
     }
   ],
   "tools": [
@@ -412,7 +429,7 @@
   ],
   "dependencies": {
     "@raycast/api": "^1.104.1",
-    "@raycast/utils": "^2.2.2",
+    "@raycast/utils": "^2.2.4",
     "run-applescript": "^7.1.0",
     "sql.js": "^1.13.0"
   },

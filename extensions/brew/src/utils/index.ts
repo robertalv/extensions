@@ -19,7 +19,6 @@ export type {
   InstallableResults,
   OutdatedResults,
   InstalledMap,
-  Remote,
   DownloadProgress,
   DownloadProgressCallback,
 } from "./types";
@@ -64,7 +63,7 @@ export {
 } from "./errors";
 
 // Cache
-export { supportPath, bundleIdentifier, cachePath, fetchRemote } from "./cache";
+export { supportPath, bundleIdentifier, cachePath, clearCache } from "./cache";
 
 // Toast
 export { showActionToast, showBrewFailureToast } from "./toast";
@@ -94,7 +93,13 @@ export type { MemorySnapshot, MemoryDelta, MemoryTrackingResult, CallerInfo } fr
 export * from "./brew";
 
 // Re-export upgrade types for convenience
-export type { UpgradeStep, UpgradeStepStatus, UpgradeProgressCallback, UpgradeResult } from "./brew/upgrade";
+export type {
+  UpgradePackage,
+  UpgradePackageStatus,
+  UpgradeEvent,
+  UpgradeEventCallback,
+  UpgradeSummary,
+} from "./brew/upgrade";
 
 // Re-export progress types and constants for convenience
 export type { BrewPhase, BrewProgress, ProgressCallback, ExecBrewWithProgressOptions } from "./brew/progress";

@@ -15,6 +15,7 @@ import {
   showToast,
   Toast,
   useNavigation,
+  Keyboard,
 } from "@raycast/api";
 import { useState } from "react";
 import { useConvexAuth } from "./hooks/useConvexAuth";
@@ -25,12 +26,37 @@ import {
   useProjects,
   useDeployments,
 } from "./hooks/useConvexData";
-import { runFunction, type FunctionSpec, type AuthOptions } from "./lib/api";
+import { runFunction, type AuthOptions, type FunctionSpec } from "./lib/api";
 import { type DeployKeyConfig } from "./lib/deployKeyAuth";
 
 interface FunctionWithPath extends FunctionSpec {
   fullPath: string;
   modulePath: string;
+}
+
+/**
+ * Dashboard link for a function; falls back to the deployment resolver URL
+ * when team/project context is unavailable (deploy key mode).
+ */
+function functionDashboardUrl(options: {
+  teamSlug?: string;
+  projectSlug?: string;
+  deploymentType?: string;
+  deploymentName: string;
+  functionPath: string;
+}): string {
+  const {
+    teamSlug,
+    projectSlug,
+    deploymentType,
+    deploymentName,
+    functionPath,
+  } = options;
+  const functionQuery = `functions?function=${encodeURIComponent(functionPath)}`;
+  if (teamSlug && projectSlug && deploymentType) {
+    return `https://dashboard.convex.dev/t/${teamSlug}/${projectSlug}/${deploymentType}/${functionQuery}`;
+  }
+  return `https://dashboard.convex.dev/d/${deploymentName}/${functionQuery}`;
 }
 
 export default function RunFunctionCommand() {
@@ -41,31 +67,33 @@ export default function RunFunctionCommand() {
 
   const accessToken = session?.accessToken ?? null;
   const deploymentName = selectedContext.deploymentName;
+  const deploymentUrl = selectedContext.deploymentUrl;
 
-  // Fetch context data (only in OAuth mode - not available with deploy keys)
-  const { data: teams } = useTeams(isDeployKeyMode ? null : accessToken);
-  const { data: projects } = useProjects(
-    isDeployKeyMode ? null : accessToken,
-    selectedContext.teamId,
-  );
+  // Fetch context data (BigBrain API — not available with a deploy key)
+  const bigBrainToken = isDeployKeyMode ? null : accessToken;
+  const { data: teams } = useTeams(bigBrainToken);
+  const { data: projects } = useProjects(bigBrainToken, selectedContext.teamId);
   const { data: deployments } = useDeployments(
-    isDeployKeyMode ? null : accessToken,
+    bigBrainToken,
     selectedContext.projectId,
   );
 
-  const selectedTeam = teams?.find((t) => t.id === selectedContext.teamId);
-  const selectedProject = projects?.find(
-    (p) => p.id === selectedContext.projectId,
-  );
-  const selectedDeployment = deployments?.find(
-    (d) => d.name === deploymentName,
-  );
+  const selectedTeam = Array.isArray(teams)
+    ? teams.find((t) => t.id === selectedContext.teamId)
+    : undefined;
+  const selectedProject = Array.isArray(projects)
+    ? projects.find((p) => p.id === selectedContext.projectId)
+    : undefined;
+  const selectedDeployment = Array.isArray(deployments)
+    ? deployments.find((d) => d.name === deploymentName)
+    : undefined;
 
-  // Fetch functions (supports both OAuth and deploy key modes)
+  // Fetch functions
   const { data: modules, isLoading: functionsLoading } = useFunctions(
     accessToken,
     deploymentName,
     deployKeyConfig,
+    deploymentUrl,
   );
 
   // Handle authentication
@@ -88,7 +116,9 @@ export default function RunFunctionCommand() {
   }
 
   // Flatten functions for search
-  const allFunctions: FunctionWithPath[] = (modules ?? []).flatMap((module) =>
+  const allFunctions: FunctionWithPath[] = (
+    Array.isArray(modules) ? modules : []
+  ).flatMap((module) =>
     module.functions
       .filter((fn) => fn.visibility?.kind === "public")
       .map((fn) => {
@@ -136,6 +166,7 @@ export default function RunFunctionCommand() {
       <FunctionRunner
         functionSpec={fn}
         deploymentName={deploymentName}
+        deploymentUrl={deploymentUrl}
         accessToken={accessToken!}
         deployKeyConfig={deployKeyConfig}
         teamSlug={selectedTeam?.slug}
@@ -184,7 +215,13 @@ export default function RunFunctionCommand() {
                   <ActionPanel.Section>
                     <Action.OpenInBrowser
                       title="Open in Dashboard"
-                      url={`https://dashboard.convex.dev/t/${selectedTeam?.slug}/${selectedProject?.slug}/${selectedDeployment?.deploymentType}/functions?function=${encodeURIComponent(fn.fullPath)}`}
+                      url={functionDashboardUrl({
+                        teamSlug: selectedTeam?.slug,
+                        projectSlug: selectedProject?.slug,
+                        deploymentType: selectedDeployment?.deploymentType,
+                        deploymentName,
+                        functionPath: fn.fullPath,
+                      })}
                     />
                   </ActionPanel.Section>
                 </ActionPanel>
@@ -213,6 +250,7 @@ export default function RunFunctionCommand() {
 interface FunctionRunnerProps {
   functionSpec: FunctionWithPath;
   deploymentName: string;
+  deploymentUrl?: string | null;
   accessToken: string;
   deployKeyConfig?: DeployKeyConfig | null;
   teamSlug?: string;
@@ -223,6 +261,7 @@ interface FunctionRunnerProps {
 function FunctionRunner({
   functionSpec,
   deploymentName,
+  deploymentUrl,
   accessToken,
   deployKeyConfig,
   teamSlug,
@@ -254,29 +293,22 @@ function FunctionRunner({
     setResult(null);
 
     try {
-      let response;
-      if (deployKeyConfig) {
-        // Deploy key mode
-        const auth: AuthOptions = {
-          deployKey: deployKeyConfig.deployKey,
-          deploymentUrl: deployKeyConfig.deploymentUrl,
-        };
-        response = await runFunction(
-          auth,
-          functionSpec.fullPath,
-          functionSpec.functionType,
-          args,
-        );
-      } else {
-        // OAuth mode
-        response = await runFunction(
-          deploymentName,
-          accessToken,
-          functionSpec.fullPath,
-          functionSpec.functionType,
-          args,
-        );
-      }
+      const auth: AuthOptions = deployKeyConfig
+        ? {
+            deployKey: deployKeyConfig.deployKey,
+            deploymentUrl: deployKeyConfig.deploymentUrl,
+          }
+        : {
+            deploymentName,
+            deploymentUrl: deploymentUrl ?? undefined,
+            accessToken,
+          };
+      const response = await runFunction(
+        auth,
+        functionSpec.fullPath,
+        functionSpec.functionType,
+        args,
+      );
 
       setResult({
         data: response.result,
@@ -395,7 +427,7 @@ function FunctionRunner({
               title="Quick Run Without Arguments"
               icon={Icon.Bolt}
               onAction={handleQuickRun}
-              shortcut={{ modifiers: ["cmd"], key: "r" }}
+              shortcut={Keyboard.Shortcut.Common.Refresh}
             />
           </ActionPanel.Section>
 
@@ -409,7 +441,7 @@ function FunctionRunner({
               <Action.CopyToClipboard
                 title="Copy as One Line"
                 content={JSON.stringify(result.data)}
-                shortcut={{ modifiers: ["cmd", "shift"], key: "c" }}
+                shortcut={Keyboard.Shortcut.Common.Copy}
               />
             </ActionPanel.Section>
           )}
@@ -421,8 +453,14 @@ function FunctionRunner({
             />
             <Action.OpenInBrowser
               title="Open in Dashboard"
-              url={`https://dashboard.convex.dev/t/${teamSlug}/${projectSlug}/${deploymentType}/functions?function=${encodeURIComponent(functionSpec.fullPath)}`}
-              shortcut={{ modifiers: ["cmd"], key: "o" }}
+              url={functionDashboardUrl({
+                teamSlug,
+                projectSlug,
+                deploymentType,
+                deploymentName,
+                functionPath: functionSpec.fullPath,
+              })}
+              shortcut={Keyboard.Shortcut.Common.Open}
             />
           </ActionPanel.Section>
 
@@ -484,7 +522,7 @@ function ArgumentsForm({
             title="Cancel"
             icon={Icon.XMarkCircle}
             onAction={pop}
-            shortcut={{ modifiers: ["cmd"], key: "." }}
+            shortcut={Keyboard.Shortcut.Common.Pin}
           />
         </ActionPanel>
       }

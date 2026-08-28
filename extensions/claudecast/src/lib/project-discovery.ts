@@ -1,17 +1,21 @@
 import fs from "fs";
 import path from "path";
 import { LocalStorage } from "@raycast/api";
-import { exec } from "child_process";
+import { execFile } from "child_process";
 import { promisify } from "util";
 import {
   listProjectDirs,
-  decodeProjectPath,
+  resolveProjectPath,
   getMostRecentSession,
-  listProjectSessions,
+  listSessionFiles,
+  getClaudeProjectsDirectory,
+  listWslSessionProjects,
 } from "./session-parser";
 import { parseVSCodeWorkspaces } from "./vscode-storage";
+import { getPathIdentity, isWindows } from "./platform";
+import { getWindowsEnvironment } from "./windows-runtime";
 
-const execPromise = promisify(exec);
+const execFilePromise = promisify(execFile);
 
 export interface Project {
   path: string;
@@ -19,10 +23,19 @@ export interface Project {
   isFavorite: boolean;
   lastAccessed?: Date;
   sessionCount?: number;
+  wsl?: {
+    distribution: string;
+    cwd: string;
+    claudeExecutable?: string;
+  };
 }
 
 const FAVORITES_KEY = "claudecast-favorite-projects";
 const RECENT_KEY = "claudecast-recent-projects";
+
+function pathsMatch(first: string, second: string): boolean {
+  return getPathIdentity(first) === getPathIdentity(second);
+}
 
 /**
  * Get favorite projects from storage
@@ -44,7 +57,7 @@ async function saveFavorites(favorites: string[]): Promise<void> {
  */
 export async function addFavorite(projectPath: string): Promise<void> {
   const favorites = await getFavorites();
-  if (!favorites.includes(projectPath)) {
+  if (!favorites.some((favorite) => pathsMatch(favorite, projectPath))) {
     favorites.push(projectPath);
     await saveFavorites(favorites);
   }
@@ -55,11 +68,9 @@ export async function addFavorite(projectPath: string): Promise<void> {
  */
 export async function removeFavorite(projectPath: string): Promise<void> {
   const favorites = await getFavorites();
-  const index = favorites.indexOf(projectPath);
-  if (index >= 0) {
-    favorites.splice(index, 1);
-    await saveFavorites(favorites);
-  }
+  await saveFavorites(
+    favorites.filter((favorite) => !pathsMatch(favorite, projectPath)),
+  );
 }
 
 /**
@@ -67,7 +78,7 @@ export async function removeFavorite(projectPath: string): Promise<void> {
  */
 export async function isFavorite(projectPath: string): Promise<boolean> {
   const favorites = await getFavorites();
-  return favorites.includes(projectPath);
+  return favorites.some((favorite) => pathsMatch(favorite, projectPath));
 }
 
 /**
@@ -85,7 +96,7 @@ async function getRecentProjects(): Promise<
  */
 export async function addRecentProject(projectPath: string): Promise<void> {
   const recent = await getRecentProjects();
-  const filtered = recent.filter((r) => r.path !== projectPath);
+  const filtered = recent.filter((r) => !pathsMatch(r.path, projectPath));
   filtered.unshift({ path: projectPath, timestamp: Date.now() });
   // Keep only last 20
   const trimmed = filtered.slice(0, 20);
@@ -94,6 +105,7 @@ export async function addRecentProject(projectPath: string): Promise<void> {
 
 /**
  * Discover projects from Claude Code's project directories
+ * Optimized to avoid loading full session details - only counts files
  */
 export async function discoverClaudeProjects(): Promise<Project[]> {
   const projectDirs = await listProjectDirs();
@@ -101,12 +113,44 @@ export async function discoverClaudeProjects(): Promise<Project[]> {
   const projects: Project[] = [];
 
   for (const encodedPath of projectDirs) {
-    const projectPath = decodeProjectPath(encodedPath);
+    const projectPath = await resolveProjectPath(encodedPath);
     const projectName = path.basename(projectPath) || projectPath;
 
-    // Get session count and last accessed
-    const sessions = await listProjectSessions(projectPath);
-    const lastAccessed = sessions[0]?.lastModified;
+    // Get session count efficiently by just listing files (no parsing)
+    const sessionFiles = await listSessionFiles(encodedPath);
+    const sessionCount = sessionFiles.length;
+
+    // Get last modified time from the most recent session file (by file stat, no parsing)
+    let lastAccessed: Date | undefined;
+    if (sessionCount > 0) {
+      try {
+        const claudeProjectsDir = path.join(
+          getClaudeProjectsDirectory(),
+          encodedPath,
+        );
+        // Get stats for a few session files and find the most recent
+        const stats = await Promise.all(
+          sessionFiles.slice(0, 10).map(async (file) => {
+            try {
+              const stat = await fs.promises.stat(
+                path.join(claudeProjectsDir, file),
+              );
+              return stat.mtime;
+            } catch {
+              return null;
+            }
+          }),
+        );
+        const validStats = stats.filter((s): s is Date => s !== null);
+        if (validStats.length > 0) {
+          lastAccessed = new Date(
+            Math.max(...validStats.map((d) => d.getTime())),
+          );
+        }
+      } catch {
+        // Couldn't get file stats
+      }
+    }
 
     // Check if the directory actually exists on disk
     let exists = false;
@@ -117,15 +161,26 @@ export async function discoverClaudeProjects(): Promise<Project[]> {
       exists = false;
     }
 
-    if (exists || sessions.length > 0) {
+    if (exists || sessionCount > 0) {
       projects.push({
         path: projectPath,
         name: projectName,
-        isFavorite: favorites.includes(projectPath),
+        isFavorite: favorites.some((favorite) =>
+          pathsMatch(favorite, projectPath),
+        ),
         lastAccessed,
-        sessionCount: sessions.length,
+        sessionCount,
       });
     }
+  }
+
+  for (const wslProject of await listWslSessionProjects()) {
+    projects.push({
+      ...wslProject,
+      isFavorite: favorites.some((favorite) =>
+        pathsMatch(favorite, wslProject.path),
+      ),
+    });
   }
 
   return projects;
@@ -153,17 +208,22 @@ export async function getAllProjects(): Promise<{
   const recentList = await getRecentProjects();
 
   // Combine projects
-  const allProjectPaths = new Set(claudeProjects.map((p) => p.path));
-  const projectsMap = new Map(claudeProjects.map((p) => [p.path, p]));
+  const allProjectPaths = new Set(
+    claudeProjects.map((p) => getPathIdentity(p.path)),
+  );
+  const projectsMap = new Map(
+    claudeProjects.map((p) => [getPathIdentity(p.path), p]),
+  );
 
   // Add VS Code workspaces that aren't already in Claude projects
   for (const wsPath of vscodeWorkspaces) {
-    if (!allProjectPaths.has(wsPath)) {
-      allProjectPaths.add(wsPath);
-      projectsMap.set(wsPath, {
+    const workspaceKey = getPathIdentity(wsPath);
+    if (!allProjectPaths.has(workspaceKey)) {
+      allProjectPaths.add(workspaceKey);
+      projectsMap.set(workspaceKey, {
         path: wsPath,
         name: path.basename(wsPath) || wsPath,
-        isFavorite: favorites.includes(wsPath),
+        isFavorite: favorites.some((favorite) => pathsMatch(favorite, wsPath)),
         sessionCount: 0,
       });
     }
@@ -175,12 +235,16 @@ export async function getAllProjects(): Promise<{
   const favoriteProjects = allProjects.filter((p) => p.isFavorite);
 
   const recentProjects = recentList
-    .map((r) => projectsMap.get(r.path))
+    .map((r) => projectsMap.get(getPathIdentity(r.path)))
     .filter((p): p is Project => p !== undefined && !p.isFavorite)
     .slice(0, 10);
 
   const otherProjects = allProjects
-    .filter((p) => !p.isFavorite && !recentList.some((r) => r.path === p.path))
+    .filter(
+      (p) =>
+        !p.isFavorite &&
+        !recentList.some((recent) => pathsMatch(recent.path, p.path)),
+    )
     .sort((a, b) => {
       // Sort by last accessed, then by name
       if (a.lastAccessed && b.lastAccessed) {
@@ -208,7 +272,9 @@ export async function getMostRecentProject(): Promise<Project | null> {
     return {
       path: recentSession.projectPath,
       name: recentSession.projectName,
-      isFavorite: favorites.includes(recentSession.projectPath),
+      isFavorite: favorites.some((favorite) =>
+        pathsMatch(favorite, recentSession.projectPath),
+      ),
       lastAccessed: recentSession.lastModified,
     };
   }
@@ -222,20 +288,24 @@ export async function getGitInfo(
   projectPath: string,
 ): Promise<{ branch: string; hasChanges: boolean; remote?: string } | null> {
   try {
-    const { stdout: branch } = await execPromise("git branch --show-current", {
-      cwd: projectPath,
-    });
-    const { stdout: status } = await execPromise("git status --porcelain", {
-      cwd: projectPath,
-    });
+    const env = isWindows() ? await getWindowsEnvironment() : process.env;
+    const { stdout: branch } = await execFilePromise(
+      "git",
+      ["branch", "--show-current"],
+      { cwd: projectPath, env, windowsHide: true },
+    );
+    const { stdout: status } = await execFilePromise(
+      "git",
+      ["status", "--porcelain"],
+      { cwd: projectPath, env, windowsHide: true },
+    );
 
     let remote: string | undefined;
     try {
-      const { stdout: remoteUrl } = await execPromise(
-        "git remote get-url origin",
-        {
-          cwd: projectPath,
-        },
+      const { stdout: remoteUrl } = await execFilePromise(
+        "git",
+        ["remote", "get-url", "origin"],
+        { cwd: projectPath, env, windowsHide: true },
       );
       remote = remoteUrl.trim();
     } catch {

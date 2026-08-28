@@ -17,9 +17,13 @@ import { preferences } from "../utils";
  *
  * This shows potentially stale data immediately, then updates with fresh data.
  *
+ * @param options.backgroundRefresh - Run brew update & refresh in the background (default: true).
+ *   Disable this when the caller runs its own brew command, since brew does not
+ *   support concurrent processes.
  * @returns Object containing loading state, data, isRefreshing flag, and revalidate function
  */
-export function useBrewOutdated() {
+export function useBrewOutdated(options?: { backgroundRefresh?: boolean }) {
+  const backgroundRefresh = options?.backgroundRefresh ?? true;
   const [isRefreshing, setIsRefreshing] = useState(false);
   const hasRefreshedRef = useRef(false);
 
@@ -66,19 +70,9 @@ export function useBrewOutdated() {
 
     brewLogger.log("Starting background refresh for outdated packages");
 
-    let toast: Toast | undefined;
     try {
-      // Show toast for brew update
-      toast = await showToast({
-        style: Toast.Style.Animated,
-        title: "Updating Homebrew Index…",
-      });
-
-      // Run brew update
+      // Run brew update (loading indicator is shown via isRefreshing)
       await brewUpdate();
-
-      // Update toast for fetching outdated
-      toast.title = "Checking for Outdated Packages…";
 
       // Then fetch fresh outdated data (skipUpdate since we just did it)
       const freshData = await brewFetchOutdated(preferences.greedyUpgrades, undefined, true);
@@ -99,13 +93,8 @@ export function useBrewOutdated() {
       } else {
         brewLogger.log("Background refresh complete, no changes");
       }
-
-      // Hide toast on success
-      toast?.hide();
     } catch (error) {
       brewLogger.warn("Background refresh failed", { error });
-      // Hide toast on failure too
-      toast?.hide();
     } finally {
       setIsRefreshing(false);
     }
@@ -113,10 +102,10 @@ export function useBrewOutdated() {
 
   // Start background refresh after initial data loads
   useEffect(() => {
-    if (!result.isLoading && result.data && !hasRefreshedRef.current) {
+    if (backgroundRefresh && !result.isLoading && result.data && !hasRefreshedRef.current) {
       refreshInBackground();
     }
-  }, [result.isLoading, result.data, refreshInBackground]);
+  }, [backgroundRefresh, result.isLoading, result.data, refreshInBackground]);
 
   return {
     ...result,

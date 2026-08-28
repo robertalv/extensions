@@ -7,7 +7,11 @@
   "author": "frouo",
   "contributors": [
     "erics118",
-    "jschmidtcordeiro"
+    "jschmidtcordeiro",
+    "NirRosh",
+    "josh_carty",
+    "smpeotn",
+    "radek_cabaj"
   ],
   "license": "MIT",
   "commands": [
@@ -27,6 +31,18 @@
     }
   ],
   "preferences": [
+    {
+      "title": "Browser",
+      "name": "browser",
+      "type": "dropdown",
+      "required": false,
+      "default": "chrome",
+      "description": "Which Chrome variant to use for profile switching.",
+      "data": [
+        { "title": "Google Chrome", "value": "chrome" },
+        { "title": "Google Chrome Canary", "value": "chrome-canary" }
+      ]
+    },
     {
       "title": "Search Engine URL",
       "name": "newTabURL",

@@ -86,11 +86,13 @@ export function getLocationDescription(location: Location) {
 }
 
 export function truncate(str: string, maxLength = 45): string {
-  if (str.length <= maxLength) {
+  const characters = Array.from(str);
+
+  if (characters.length <= maxLength) {
     return str;
   }
 
-  return str.substring(0, maxLength) + "…";
+  return characters.slice(0, maxLength).join("") + "…";
 }
 
 export function getIntervalValidationError(interval?: string): string | undefined {
@@ -100,5 +102,8 @@ export function getIntervalValidationError(interval?: string): string | undefine
 }
 
 export function getAttachedUrls(reminder: Reminder): string[] {
-  return (reminder.attachedUrls || []).filter(Boolean);
+  if (!reminder.attachedUrls || !Array.isArray(reminder.attachedUrls)) {
+    return [];
+  }
+  return reminder.attachedUrls.filter(Boolean);
 }

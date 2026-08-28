@@ -12,6 +12,7 @@ import {
   List,
   showToast,
   Toast,
+  Keyboard,
 } from "@raycast/api";
 import { useState, useEffect } from "react";
 import { useConvexAuth } from "./hooks/useConvexAuth";
@@ -46,6 +47,7 @@ export default function BrowseTablesCommand() {
 
   const accessToken = session?.accessToken ?? null;
   const deploymentName = selectedContext.deploymentName;
+  const deploymentUrl = selectedContext.deploymentUrl;
 
   // Fetch context data (only in OAuth mode - not available with deploy keys)
   const { data: teams } = useTeams(isDeployKeyMode ? null : accessToken);
@@ -58,19 +60,22 @@ export default function BrowseTablesCommand() {
     selectedContext.projectId,
   );
 
-  const selectedTeam = teams?.find((t) => t.id === selectedContext.teamId);
-  const selectedProject = projects?.find(
-    (p) => p.id === selectedContext.projectId,
-  );
-  const selectedDeployment = deployments?.find(
-    (d) => d.name === deploymentName,
-  );
+  const selectedTeam = Array.isArray(teams)
+    ? teams.find((t) => t.id === selectedContext.teamId)
+    : undefined;
+  const selectedProject = Array.isArray(projects)
+    ? projects.find((p) => p.id === selectedContext.projectId)
+    : undefined;
+  const selectedDeployment = Array.isArray(deployments)
+    ? deployments.find((d) => d.name === deploymentName)
+    : undefined;
 
   // Fetch tables (supports both OAuth and deploy key modes)
   const { data: tables, isLoading: tablesLoading } = useTables(
     accessToken,
     deploymentName,
     deployKeyConfig,
+    deploymentUrl,
   );
 
   // Fetch documents when table is selected
@@ -95,12 +100,12 @@ export default function BrowseTablesCommand() {
           result = await getDocuments(auth, selectedTable!.name, { limit: 50 });
         } else {
           // OAuth mode
-          result = await getDocuments(
-            deploymentName!,
-            accessToken!,
-            selectedTable!.name,
-            { limit: 50 },
-          );
+          const auth: AuthOptions = {
+            deploymentName: deploymentName!,
+            deploymentUrl: deploymentUrl ?? undefined,
+            accessToken: accessToken!,
+          };
+          result = await getDocuments(auth, selectedTable!.name, { limit: 50 });
         }
         setDocuments(result.documents);
         setNextCursor(result.nextCursor);
@@ -117,7 +122,13 @@ export default function BrowseTablesCommand() {
     }
 
     fetchDocuments();
-  }, [selectedTable, accessToken, deploymentName, deployKeyConfig]);
+  }, [
+    selectedTable,
+    accessToken,
+    deploymentName,
+    deploymentUrl,
+    deployKeyConfig,
+  ]);
 
   // Load more documents
   const loadMore = async () => {
@@ -143,15 +154,15 @@ export default function BrowseTablesCommand() {
         });
       } else {
         // OAuth mode
-        result = await getDocuments(
-          deploymentName!,
-          accessToken!,
-          selectedTable.name,
-          {
-            limit: 50,
-            cursor: nextCursor,
-          },
-        );
+        const auth: AuthOptions = {
+          deploymentName: deploymentName!,
+          deploymentUrl: deploymentUrl ?? undefined,
+          accessToken: accessToken!,
+        };
+        result = await getDocuments(auth, selectedTable.name, {
+          limit: 50,
+          cursor: nextCursor,
+        });
       }
       setDocuments((prev) => [...prev, ...result.documents]);
       setNextCursor(result.nextCursor);
@@ -321,9 +332,9 @@ export default function BrowseTablesCommand() {
                         shortcut={{ modifiers: ["cmd"], key: "c" }}
                       />
                       <Action.CopyToClipboard
-                        title="Copy Document Id"
+                        title="Copy Document ID"
                         content={doc._id}
-                        shortcut={{ modifiers: ["cmd", "shift"], key: "c" }}
+                        shortcut={Keyboard.Shortcut.Common.Copy}
                       />
                       <ActionPanel.Section>
                         <Action

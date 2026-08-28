@@ -1,5 +1,23 @@
 # Radarr Changelog
 
+## [Windows Support] - 2026-08-20
+
+### Added
+
+- Windows support: the extension is now available on both macOS and Windows
+
+### Changed
+
+- Extension preferences are now opened through the Raycast API instead of a `raycast://` deeplink, so the action works on every platform
+- Upgraded to `@raycast/api` v2 and updated the remaining dependencies to their latest versions
+- Refreshed the transitive security overrides
+
+## [Update] - 2026-03-04
+
+### Added
+
+- Settings for "Monitor This Movie", "Search Immediately" and "Default Quality Profile" are remembered
+
 ## [Update] - 2025-11-03
 
 ### Changed

@@ -1,4 +1,14 @@
-import { Action, ActionPanel, Color, getPreferenceValues, Icon, Preferences, showToast, Toast } from "@raycast/api";
+import {
+  Action,
+  ActionPanel,
+  Color,
+  getPreferenceValues,
+  Icon,
+  Preferences,
+  showToast,
+  Toast,
+  Keyboard,
+} from "@raycast/api";
 import { MutatePromise, useCachedPromise } from "@raycast/utils";
 import { useState } from "react";
 
@@ -12,13 +22,14 @@ import {
   UserFieldsFragment,
 } from "../generated/graphql";
 import { getErrorMessage } from "../helpers/errors";
-import { PR_SORT_TYPES_TO_QUERIES } from "../helpers/pull-request";
+import { getMergeMethodTitle, PR_SORT_TYPES_TO_QUERIES } from "../helpers/pull-request";
 import { getGitHubUser } from "../helpers/users";
 import { useMyPullRequests } from "../hooks/useMyPullRequests";
 
 import AddPullRequestReview from "./AddPullRequestReview";
 import CheckoutPullRequestForm from "./CheckoutPullRequestForm";
 import PullRequestCommits from "./PullRequestCommits";
+import PullRequestDiff from "./PullRequestDiff";
 import { SortAction, SortActionProps } from "./SortAction";
 
 export type PullRequest =
@@ -29,7 +40,10 @@ export type PullRequest =
 type PullRequestActionsProps = {
   pullRequest: PullRequest;
   viewer?: UserFieldsFragment;
-  mutateList?: MutatePromise<PullRequestFieldsFragment[] | undefined> | ReturnType<typeof useMyPullRequests>["mutate"];
+  mutateList?:
+    | MutatePromise<PullRequestFieldsFragment[] | undefined>
+    | MutatePromise<PullRequestFieldsFragment[]>
+    | ReturnType<typeof useMyPullRequests>["mutate"];
   mutateDetail?: MutatePromise<PullRequest>;
   children?: React.ReactNode;
 };
@@ -74,6 +88,30 @@ export default function PullRequestActions({
       await showToast({
         style: Toast.Style.Failure,
         title: "Failed reopening pull request",
+        message: getErrorMessage(error),
+      });
+    }
+  }
+
+  async function markReadyForReview() {
+    try {
+      await showToast({
+        style: Toast.Style.Animated,
+        title: `Marking pull request #${pullRequest.number} as ready for review`,
+      });
+
+      await github.markPullRequestReadyForReview({ nodeId: pullRequest.id });
+
+      await mutate();
+
+      await showToast({
+        style: Toast.Style.Success,
+        title: `Pull request #${pullRequest.number} is ready for review`,
+      });
+    } catch (error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Failed marking pull request as ready for review",
         message: getErrorMessage(error),
       });
     }
@@ -175,14 +213,14 @@ export default function PullRequestActions({
     }
   }
 
-  async function enableAutoMerge() {
+  async function enableAutoMerge(mergeMethod?: PullRequestMergeMethod) {
     try {
       await showToast({
         style: Toast.Style.Animated,
         title: `Enabling auto-merge for pull request #${pullRequest.number}`,
       });
 
-      await github.enablePullRequestAutoMerge({ nodeId: pullRequest.id });
+      await github.enablePullRequestAutoMerge({ nodeId: pullRequest.id, mergeMethod });
 
       await mutate();
 
@@ -288,7 +326,22 @@ export default function PullRequestActions({
     pullRequest.mergeable === MergeableState.Mergeable &&
     pullRequest.mergeStateStatus !== MergeStateStatus.Blocked;
 
-  const anyMergeActionAvailable = canMerge || pullRequest.repository.autoMergeAllowed;
+  const isOpen = !pullRequest.closed && !pullRequest.merged;
+
+  const isAuthoredByViewer = pullRequest.author
+    ? "isViewer" in pullRequest.author
+      ? pullRequest.author.isViewer
+      : pullRequest.author.login === viewer?.login
+    : false;
+  const canMarkReadyForReview = isOpen && pullRequest.isDraft && isAuthoredByViewer;
+  const allowedMergeMethods = [
+    pullRequest.repository.mergeCommitAllowed && PullRequestMergeMethod.Merge,
+    pullRequest.repository.squashMergeAllowed && PullRequestMergeMethod.Squash,
+    pullRequest.repository.rebaseMergeAllowed && PullRequestMergeMethod.Rebase,
+  ].filter(Boolean) as PullRequestMergeMethod[];
+
+  const canAutoMerge = isOpen && pullRequest.repository.autoMergeAllowed;
+  const anyMergeActionAvailable = canMerge || canAutoMerge;
 
   const viewerUser = getGitHubUser(viewer);
 
@@ -317,47 +370,26 @@ export default function PullRequestActions({
       <Action.Push
         icon={{ source: "commit.svg", tintColor: Color.PrimaryText }}
         title="See Commits"
-        shortcut={{ modifiers: ["cmd", "shift"], key: "c" }}
+        shortcut={Keyboard.Shortcut.Common.Copy}
         target={<PullRequestCommits pullRequest={pullRequest} />}
       />
 
       <Action.Push
+        icon={Icon.CodeBlock}
+        title="View Diff"
+        shortcut={Keyboard.Shortcut.Common.RemoveAll}
+        target={<PullRequestDiff pullRequest={pullRequest} />}
+      />
+
+      <Action.Push
         icon={Icon.Download}
-        title="Check out PR"
-        shortcut={{ modifiers: ["cmd", "shift"], key: "o" }}
+        title="Checkout Pull Request"
+        shortcut={Keyboard.Shortcut.Common.OpenWith}
         target={<CheckoutPullRequestForm pullRequest={pullRequest} />}
       />
 
       {anyMergeActionAvailable && (
         <ActionPanel.Section>
-          {!canMerge && !pullRequest.isInMergeQueue && !pullRequest.repository.autoMergeAllowed && (
-            <>
-              {pullRequest.autoMergeRequest && (
-                <Action
-                  title="Disable Auto Merge"
-                  icon={{
-                    source: "pull-request-merged.svg",
-                    tintColor: Color.PrimaryText,
-                  }}
-                  shortcut={{ modifiers: ["cmd", "shift"], key: "enter" }}
-                  onAction={() => disableAutoMerge()}
-                />
-              )}
-
-              {!pullRequest.autoMergeRequest && (
-                <Action
-                  title="Merge When Ready"
-                  icon={{
-                    source: "pull-request-merged.svg",
-                    tintColor: Color.PrimaryText,
-                  }}
-                  shortcut={{ modifiers: ["cmd", "shift"], key: "enter" }}
-                  onAction={() => enableAutoMerge()}
-                />
-              )}
-            </>
-          )}
-
           {pullRequest.isMergeQueueEnabled && canMerge && !pullRequest.isInMergeQueue && (
             <Action
               title="Add to Merge Queue"
@@ -420,6 +452,42 @@ export default function PullRequestActions({
               ) : null}
             </>
           ) : null}
+
+          {canAutoMerge && !pullRequest.autoMergeRequest && allowedMergeMethods.length === 1 && (
+            <Action
+              title="Enable Auto-Merge"
+              icon={{
+                source: "pull-request-merged.svg",
+                tintColor: Color.PrimaryText,
+              }}
+              onAction={() => enableAutoMerge(allowedMergeMethods[0])}
+            />
+          )}
+
+          {canAutoMerge && !pullRequest.autoMergeRequest && allowedMergeMethods.length > 1 && (
+            <ActionPanel.Submenu
+              title="Enable Auto-Merge"
+              icon={{
+                source: "pull-request-merged.svg",
+                tintColor: Color.PrimaryText,
+              }}
+            >
+              {allowedMergeMethods.map((method) => (
+                <Action key={method} title={getMergeMethodTitle(method)} onAction={() => enableAutoMerge(method)} />
+              ))}
+            </ActionPanel.Submenu>
+          )}
+
+          {isOpen && pullRequest.autoMergeRequest && (
+            <Action
+              title="Disable Auto-Merge"
+              icon={{
+                source: "pull-request-merged.svg",
+                tintColor: Color.PrimaryText,
+              }}
+              onAction={() => disableAutoMerge()}
+            />
+          )}
         </ActionPanel.Section>
       )}
 
@@ -445,6 +513,18 @@ export default function PullRequestActions({
       </ActionPanel.Section>
 
       <ActionPanel.Section>
+        {canMarkReadyForReview ? (
+          <Action
+            title="Ready for Review"
+            icon={{
+              source: "pull-request-open.svg",
+              tintColor: Color.PrimaryText,
+            }}
+            shortcut={{ modifiers: ["cmd", "shift"], key: "d" }}
+            onAction={() => markReadyForReview()}
+          />
+        ) : null}
+
         {pullRequest.closed && !pullRequest.merged ? (
           <Action
             title="Reopen Pull Request"
@@ -506,7 +586,7 @@ export default function PullRequestActions({
           icon={Icon.ArrowClockwise}
           title="Refresh"
           onAction={mutate}
-          shortcut={{ modifiers: ["cmd"], key: "r" }}
+          shortcut={Keyboard.Shortcut.Common.Refresh}
         />
       </ActionPanel.Section>
     </ActionPanel>

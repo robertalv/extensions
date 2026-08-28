@@ -13,7 +13,13 @@ import {
   getSelectedText,
 } from "@raycast/api";
 import { useState, useEffect } from "react";
-import { executePrompt, ClaudeResponse } from "./lib/claude-cli";
+import {
+  executePrompt,
+  ClaudeResponse,
+  ensureClaudeApiAuth,
+  ensureClaudeInstalled,
+} from "./lib/claude-cli";
+import { shortcut } from "./lib/shortcuts";
 
 interface Transform {
   id: string;
@@ -431,6 +437,17 @@ function ExecutingTransformView({
   useEffect(() => {
     async function execute() {
       try {
+        if (!(await ensureClaudeInstalled())) {
+          setError("Claude Code not installed");
+          setIsLoading(false);
+          return;
+        }
+        if (!(await ensureClaudeApiAuth())) {
+          setError("Claude authentication missing");
+          setIsLoading(false);
+          return;
+        }
+
         // Build the prompt
         let prompt = transform.prompt.replace("{{code}}", selectedText);
 
@@ -512,12 +529,12 @@ function ExecutingTransformView({
           <Action.CopyToClipboard
             title="Copy Result"
             content={result?.result || ""}
-            shortcut={{ modifiers: ["cmd"], key: "c" }}
+            shortcut={shortcut.copy}
           />
           <Action.Paste
             title="Paste Result"
             content={result?.result || ""}
-            shortcut={{ modifiers: ["cmd", "shift"], key: "v" }}
+            shortcut={shortcut.primaryShift("v")}
           />
           <Action.CopyToClipboard
             title="Copy as Code Block"

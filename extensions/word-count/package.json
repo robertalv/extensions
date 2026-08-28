@@ -8,7 +8,9 @@
   "author": "itsmingjie",
   "contributors": [
     "koayon",
-    "chrismessina"
+    "chrismessina",
+    "litomore",
+    "aryan_thatte"
   ],
   "pastContributors": [
     "danulqua"
@@ -53,6 +55,20 @@
         "paragraph",
         "capture"
       ]
+    },
+    {
+      "name": "count-overlay",
+      "title": "Word Count in Overlay",
+      "subtitle": "Word Count",
+      "description": "Show word count in an overlay on top of other applications.",
+      "mode": "no-view",
+      "keywords": [
+        "overlay",
+        "word",
+        "character",
+        "sentence",
+        "paragraph"
+      ]
     }
   ],
   "dependencies": {
@@ -73,7 +89,7 @@
     "typescript": "^5.9.3"
   },
   "overrides": {
-    "js-yaml": "4.1.1"
+    "js-yaml": "^4.1.2"
   },
   "scripts": {
     "build": "ray build -e dist",

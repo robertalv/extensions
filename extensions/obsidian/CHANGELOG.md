@@ -1,5 +1,75 @@
 # Obsidian Changelog
 
+## [Fix Open Note on Creation] - 2026-08-27
+
+- Open the created note in Obsidian before the command window closes, so the "Open on creation" preference works reliably
+
+## [Exact Content Match Navigation] - 2026-08-27
+
+- Show each exact content occurrence as a separate result with highlighted context and line and column information
+- Open Obsidian at the selected occurrence using the official Obsidian CLI
+- Exclude fuzzy-only candidates without a literal title, path, or content match
+
+## [Fix Plugin Configuration Permission Errors] - 2026-08-19
+
+- Prevent plugin checks from crashing when Obsidian configuration files cannot be read
+
+## [Fix AI searchNote OOM on oversized Markdown] - 2026-08-15
+
+- Skip Markdown files larger than 1 MiB during full-content search instead of reading them into the 100 MB extension heap
+- Limit tag search on oversized files to a growing prefix (64 KiB steps, 1 MiB cap) so YAML tags still match when frontmatter crosses the first chunk
+- Default the AI `searchNote` `searchContent` parameter to `false`, matching the UI Search Note command
+
+## [Fix Delete Note Shortcut] - 2026-07-18
+
+- Update the Delete Note action to use the common `Keyboard.Shortcut.Common.Remove` shortcut
+- Drop the previous custom `opt+d` shortcut from the Delete Note action
+
+## [Add Open Action Shortcuts] - 2026-07-18
+
+- Add keyboard shortcut to the "Open in Default App" action
+- Assign the common Open shortcut to the "Open in New Obsidian Tab" action
+
+## [Add] - 2026-06-28
+
+- Added vault path display to the Open Vault command
+
+## [Fix] - 2026-05-05
+
+- Fix vault auto-discovery on Windows and Linux by reading `obsidian.json` from the per-platform Obsidian config dir
+
+## [Fix] - 2026-04-10
+
+- Fix Open in New Obsidian Tab failing on Windows due to path separator handling
+
+## [Wikilink Actions] - 2026-04-07
+
+- New: Copy Wikilink — copies `[[Note Title]]` to clipboard (⌥W)
+- New: Paste Wikilink — pastes `[[Note Title]]` into the focused app (⌥⇧W)
+
+## [Silent Mode No Longer Activates Obsidian] - 2026-03-31
+
+- Fix: Append to Daily Note, Append Task, and custom actions with silent mode enabled no longer bring Obsidian to the foreground
+- Fix: Multi-vault Append Task was missing the silent flag, causing Obsidian to always activate on vault selection
+- Uses macOS `open -g` (background flag) instead of Raycast `open()` when silent mode is on
+
+## [Bugfix] - 2026-03-18
+
+- Fixes a bug where the extension was failing after initial install
+
+## [AI Search Tool Content Search Parameter] - 2026-02-16
+
+- Add searchContent parameter to searchNote AI tool for controlling search mode
+- Enable content and tag search capabilities in AI tools
+- Default searchContent to true for comprehensive search including file content and tag filtering
+
+## [Custom Append Actions] - 2026-02-02
+
+- Added "Run Custom Action" command to create reusable append templates
+- Added support for dynamic date variables (e.g. `{year}`, `{date}`) in file paths
+- Added Import/Export functionality for sharing custom actions
+- Added support for "Pre-fill" or "Capture" modes in custom actions
+
 ## [New Open Workspace command, Callout Support, Copy Files Action] - 2025-12-25
 
 - Adds new Open Workspace command that shows a list of all workspaces in your vault. Requires advanced URI plugin and workspaces core plugin to be enabled

@@ -15,6 +15,7 @@ import {
   showToast,
   Toast,
   openExtensionPreferences,
+  Keyboard,
 } from "@raycast/api";
 import { useState, useEffect } from "react";
 import { useConvexAuth } from "./hooks/useConvexAuth";
@@ -63,7 +64,7 @@ export default function SwitchProjectCommand() {
 
   // Restore selection from context
   useEffect(() => {
-    if (teams && selectedContext.teamId) {
+    if (Array.isArray(teams) && selectedContext.teamId) {
       const team = teams.find((t) => t.id === selectedContext.teamId);
       if (team) {
         setSelectedTeam(team);
@@ -73,7 +74,7 @@ export default function SwitchProjectCommand() {
   }, [teams, selectedContext.teamId]);
 
   useEffect(() => {
-    if (projects && selectedContext.projectId) {
+    if (Array.isArray(projects) && selectedContext.projectId) {
       const project = projects.find((p) => p.id === selectedContext.projectId);
       if (project) {
         setSelectedProject(project);
@@ -107,7 +108,6 @@ export default function SwitchProjectCommand() {
                   title="Open Preferences"
                   icon={Icon.Gear}
                   onAction={openExtensionPreferences}
-                  shortcut={{ modifiers: ["cmd"], key: "," }}
                 />
               </ActionPanel>
             }
@@ -189,6 +189,7 @@ export default function SwitchProjectCommand() {
       projectSlug: null,
       deploymentName: null,
       deploymentType: null,
+      deploymentUrl: null,
     });
   };
 
@@ -204,6 +205,7 @@ export default function SwitchProjectCommand() {
       projectSlug: project.slug,
       deploymentName: null,
       deploymentType: null,
+      deploymentUrl: null,
     });
   };
 
@@ -212,6 +214,7 @@ export default function SwitchProjectCommand() {
     await setSelectedContext({
       deploymentName: deployment.name,
       deploymentType: deployment.deploymentType,
+      deploymentUrl: deployment.url ?? null,
     });
     await showToast({
       style: Toast.Style.Success,
@@ -241,25 +244,31 @@ export default function SwitchProjectCommand() {
         : `${selectedProject?.name} - Deployments`;
 
   // Filter items based on search text
-  const filteredTeams = teams?.filter(
-    (team) =>
-      team.name.toLowerCase().includes(searchText.toLowerCase()) ||
-      team.slug.toLowerCase().includes(searchText.toLowerCase()),
-  );
+  const filteredTeams = Array.isArray(teams)
+    ? teams.filter(
+        (team) =>
+          team.name.toLowerCase().includes(searchText.toLowerCase()) ||
+          team.slug.toLowerCase().includes(searchText.toLowerCase()),
+      )
+    : [];
 
-  const filteredProjects = projects?.filter(
-    (project) =>
-      project.name.toLowerCase().includes(searchText.toLowerCase()) ||
-      project.slug.toLowerCase().includes(searchText.toLowerCase()),
-  );
+  const filteredProjects = Array.isArray(projects)
+    ? projects.filter(
+        (project) =>
+          project.name.toLowerCase().includes(searchText.toLowerCase()) ||
+          project.slug.toLowerCase().includes(searchText.toLowerCase()),
+      )
+    : [];
 
-  const filteredDeployments = deployments?.filter(
-    (deployment) =>
-      deployment.name.toLowerCase().includes(searchText.toLowerCase()) ||
-      deployment.deploymentType
-        .toLowerCase()
-        .includes(searchText.toLowerCase()),
-  );
+  const filteredDeployments = Array.isArray(deployments)
+    ? deployments.filter(
+        (deployment) =>
+          deployment.name.toLowerCase().includes(searchText.toLowerCase()) ||
+          deployment.deploymentType
+            .toLowerCase()
+            .includes(searchText.toLowerCase()),
+      )
+    : [];
 
   // Current selection subtitle
   const currentSelection = selectedContext.deploymentName
@@ -292,7 +301,7 @@ export default function SwitchProjectCommand() {
               <ActionPanel>
                 <ActionPanel.Section>
                   <Action
-                    title="Sign Out"
+                    title="Sign out"
                     icon={Icon.Logout}
                     style={Action.Style.Destructive}
                     onAction={async () => {
@@ -302,7 +311,7 @@ export default function SwitchProjectCommand() {
                         title: "Signed out",
                       });
                     }}
-                    shortcut={{ modifiers: ["cmd", "shift"], key: "o" }}
+                    shortcut={Keyboard.Shortcut.Common.OpenWith}
                   />
                 </ActionPanel.Section>
               </ActionPanel>
@@ -322,7 +331,7 @@ export default function SwitchProjectCommand() {
             actions={
               <ActionPanel>
                 <Action
-                  title="Sign Out"
+                  title="Sign out"
                   icon={Icon.Logout}
                   style={Action.Style.Destructive}
                   onAction={async () => {
@@ -332,7 +341,7 @@ export default function SwitchProjectCommand() {
                       title: "Signed out",
                     });
                   }}
-                  shortcut={{ modifiers: ["cmd", "shift"], key: "o" }}
+                  shortcut={Keyboard.Shortcut.Common.OpenWith}
                 />
               </ActionPanel>
             }
@@ -361,7 +370,7 @@ export default function SwitchProjectCommand() {
                   />
                   <ActionPanel.Section>
                     <Action
-                      title="Sign Out"
+                      title="Sign out"
                       icon={Icon.XMarkCircle}
                       onAction={logout}
                     />
@@ -427,7 +436,7 @@ export default function SwitchProjectCommand() {
                       />
                       <ActionPanel.Section>
                         <Action
-                          title="Sign Out"
+                          title="Sign out"
                           icon={Icon.XMarkCircle}
                           onAction={logout}
                         />
@@ -519,7 +528,7 @@ export default function SwitchProjectCommand() {
                       </ActionPanel.Section>
                       <ActionPanel.Section>
                         <Action
-                          title="Sign Out"
+                          title="Sign out"
                           icon={Icon.XMarkCircle}
                           onAction={logout}
                         />

@@ -2,38 +2,69 @@ import { BrowserExtension, environment, getFrontmostApplication } from "@raycast
 import { runAppleScript } from "@raycast/utils";
 import { logger } from "@chrismessina/raycast-logger";
 
+const log = logger.child("[BrowserLink]");
+
+export interface BrowserTab {
+  url: string;
+  /**
+   * Only the Browser Extension can supply this. Every AppleScript fallback below
+   * reads the address bar and returns a URL alone, so callers must treat a missing
+   * title as normal rather than as a failure.
+   */
+  title?: string;
+}
+
+/**
+ * Whether a page TITLE can be read at all.
+ *
+ * Only the Browser Extension supplies titles — the AppleScript fallbacks below
+ * read the address bar and return a URL alone — and that API is unavailable
+ * both when the extension isn't installed and on Windows, where Raycast does
+ * not expose it yet. Callers should hide title-dependent UI when this is false
+ * rather than offering an action that can only fail. Synchronous, so it is safe
+ * to call during render.
+ */
+export function canReadPageTitle(): boolean {
+  return environment.canAccess(BrowserExtension);
+}
+
+/**
+ * Get the active browser tab.
+ *
+ * Tries the Browser Extension API first (the only source of a page title), then
+ * falls back to AppleScript per browser.
+ */
+export async function getBrowserTab(): Promise<BrowserTab | null> {
+  if (environment.canAccess(BrowserExtension)) {
+    try {
+      const tabs = await BrowserExtension.getTabs();
+      const tab = tabs.find((t) => t.active) ?? tabs[0];
+
+      if (tab?.url) {
+        // `title` is undefined while a tab is still loading, and a whitespace-only
+        // title is no more useful than none — normalise both to undefined.
+        return { url: tab.url, title: tab.title?.trim() || undefined };
+      }
+    } catch (error) {
+      // Fallback to AppleScript if Browser Extension API fails
+      log.warn("Browser Extension API failed, falling back to AppleScript", error);
+    }
+  }
+
+  const url = await getUrlViaAppleScript();
+  return url ? { url } : null;
+}
+
 /**
  * Get the current URL from the active browser tab.
- *
- * This function attempts to retrieve the URL using the following methods in order:
- * 1. Browser Extension API (if available) - preferred method
- * 2. AppleScript - fallback for supported browsers
  *
  * @returns {Promise<string | null>} The URL of the active browser tab, or null if unavailable
  */
 export async function getBrowserLink(): Promise<string | null> {
-  // Check if Browser Extension API is available
-  if (environment.canAccess(BrowserExtension)) {
-    try {
-      const tabs = await BrowserExtension.getTabs();
-      // Find the active tab
-      const activeTab = tabs.find((tab) => tab.active);
+  return (await getBrowserTab())?.url ?? null;
+}
 
-      if (activeTab?.url) {
-        return activeTab.url;
-      }
-
-      // If no active tab found, return the first tab's URL
-      if (tabs.length > 0 && tabs[0].url) {
-        return tabs[0].url;
-      }
-    } catch (error) {
-      // Fallback to AppleScript if Browser Extension API fails
-      logger.warn("Browser Extension API failed, falling back to AppleScript", error);
-    }
-  }
-
-  // Fallback: AppleScript-based processing
+async function getUrlViaAppleScript(): Promise<string | null> {
   try {
     const app = await getFrontmostApplication();
 
@@ -86,10 +117,10 @@ export async function getBrowserLink(): Promise<string | null> {
       return runAppleScript(`tell application "Vivaldi" to return URL of active tab of front window`);
     }
 
-    logger.warn(`Unsupported browser: ${app.name}`);
+    log.warn(`Unsupported browser: ${app.name}`);
     return null;
   } catch (error) {
-    logger.error("Failed to get browser link", error);
+    log.error("Failed to get browser link", error);
     return null;
   }
 }
